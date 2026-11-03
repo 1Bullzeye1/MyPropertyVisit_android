@@ -8,7 +8,7 @@ Independent native Kotlin Android app. Repository: https://github.com/1Bullzeye1
 - Clickable Home, property preparation, saved properties, details and editing screens.
 - Local SQLite property storage on a background executor, with validation and deletion confirmation.
 - Draft fields and navigation restored after activity recreation.
-- Call joining and walkthrough recording are clearly labelled placeholders. Camera recording, compass, playback, video export, accounts and sync are not implemented in this Android milestone.
+- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. Compass, video sharing/export, accounts and sync are not implemented yet.
 
 ## Open and build
 
@@ -42,3 +42,24 @@ No iOS files belong in this repository. The foundation is the first main-branch 
 ## Settings
 
 The Home gear opens Settings with persistent System/Light/Dark appearance and a device-local name, optional email and Buyer/Seller/Broker role. Local profile clearing preserves properties. Authentication and cloud sync are not implemented.
+
+## Rear-camera recording milestone
+
+Branch: `codex/android-walkthrough-recording` (separate from the foundation on main).
+
+From Home or a saved property choose **Record walkthrough**. Allow camera access, tap Record, then Stop & save. The Saved button opens offline playback. Property-specific entry points filter the saved library to that property; Home shows all recordings. Capture uses CameraX 1.4.2, requests HD with device fallback, and never enables audio or asks for microphone permission. A visible REC state and keep-screen-on flag are active while recording.
+
+Completed MP4 files and atomic JSON sidecars are stored privately under files/walkthroughs. Incomplete recordings are not listed. No cloud upload or external storage permission is involved. Uninstalling the app removes local recordings. Hold the phone upright; landscape/large-screen behaviour is not yet validated. Backgrounding or leaving recording requests stop/finalization; permission denial and save failure show feedback.
+
+### Acceptance checks before merging
+
+- Physical Android device: permission denial, allowing permission in Settings, preview restart, record/stop/save, offline playback after app restart, and screen/background interruptions.
+- Check the saved frame orientation and preview framing, particularly on hardware with a nonstandard camera sensor orientation.
+- Verify low-storage and camera-in-use failure feedback.
+- Compass and video sharing are separate future milestones; this branch does not claim iOS feature parity yet.
+
+Automated recorder test: `./gradlew connectedDebugAndroidTest`. The test grants camera permission on the test device, records a short clip, verifies duration and a decodable frame, confirms no audio track, and cleans up only its own recordings. It also runs the independent property-database regression test. Requires a connected device/emulator with a functioning rear camera.
+
+### Recorder verification
+
+`assembleDebug`, `lintDebug`, and both connected instrumentation tests passed on the Pixel 8 API 36 emulator. The recorder test produced a real camera clip, checked positive duration and video width, decoded a frame, and confirmed that the file contains no audio track. Physical-device camera behaviour and the interruption checklist remain pending. Lint reports no errors; dependency-update, portrait-orientation, backup-policy and style recommendations remain. This feature branch is not merged to main until device review.

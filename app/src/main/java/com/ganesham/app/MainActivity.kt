@@ -80,7 +80,7 @@ class MainActivity : AppCompatActivity() {
         applyTheme(preferences.getString("theme", "system") ?: "system")
         super.onCreate(state)
         store = PropertyStore(applicationContext)
-        route = state?.getString("route") ?: "home"
+        route = (state?.getString("route") ?: "home").let { if(it=="record") "home" else it }
         selected = state?.getString("selected")
         draftName = state?.getString("name") ?: ""
         draftLocation = state?.getString("location") ?: ""
@@ -140,7 +140,6 @@ class MainActivity : AppCompatActivity() {
             "form" -> form()
             "details" -> details()
             "join" -> { add(text("Join a property call",26f,true)); add(EditText(this).apply { hint = "Invitation code"; setSingleLine(); setTextColor(ink) }); add(text("Call joining is coming soon",18f,true)); add(text("Live calls are not connected in this Android build. Invitation codes cannot be used yet.",16f,false,secondary)) }
-            "record" -> { add(text("Walkthrough recorder",26f,true)); add(text("Next development milestone",18f,true,accent)); add(text("Rear-camera recording, live compass, offline playback and compass video sharing will be added next. This screen does not access your camera or create a recording.",16f,false,secondary)) }
         }
     }
     private fun home() {
@@ -161,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         hero.addView(text("Explore land, flats and buildings with the details that matter.",17f,false,Color.parseColor("#D9DFE8")))
         hero.addView(text("Live tours  ·  Directions  ·  Measurements",12f,false,Color.WHITE).apply { setPadding(0,dp(24),0,0) })
         add(hero,24)
-        card("Record walkthrough", "Recording & compass coming next", "◉") { go("record") }
+        card("Record walkthrough", "Record video and save it offline", "◉") { startActivity(android.content.Intent(this,RecorderActivity::class.java).putExtra("propertyId",selected)) }
         add(text("Take a closer look",21f,true),18)
         card("Start a property call", "Prepare your property for a tour", "+",true) { selected = null; draftName=""; draftLocation=""; draftType="Flat"; go("form") }
         card("Join a call", "Enter an invitation code", "↗") { go("join") }
@@ -201,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         if(p==null) { add(text("Property unavailable",25f,true)); return }
         add(text(p.name,27f,true)); add(text("${p.type}\n\n${p.location}",18f))
         card("Edit property","Update name, type or address","✎") { draftName=p.name; draftType=p.type; draftLocation=p.location; go("form") }
-        card("Record walkthrough","Recording & compass coming next","◉") { go("record") }
+        card("Record walkthrough","Record video and save it offline","◉") { startActivity(android.content.Intent(this,RecorderActivity::class.java).putExtra("propertyId",selected)) }
         add(text("Measurements and visit history will appear here in a later milestone.",14f,false,secondary))
         add(Button(this).apply {
             setText(R.string.delete_property); isAllCaps=false

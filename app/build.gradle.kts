@@ -23,9 +23,15 @@ android {
 }
 
 dependencies {
+    val cameraVersion = "1.4.2"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-video:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
     implementation("androidx.activity:activity:1.10.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("junit:junit:4.13.2")
 }
 
