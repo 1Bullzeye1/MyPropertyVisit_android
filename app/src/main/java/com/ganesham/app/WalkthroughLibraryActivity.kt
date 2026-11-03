@@ -1,8 +1,14 @@
 package com.ganesham.app
 
+import android.content.Intent
 import android.graphics.Color
+import android.graphics.Outline
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.*
 import androidx.activity.OnBackPressedCallback
@@ -13,60 +19,95 @@ import java.util.concurrent.Executors
 
 class WalkthroughLibraryActivity:AppCompatActivity() {
     private lateinit var store:WalkthroughStore
+    private lateinit var ui:LensUi
     private val io=Executors.newSingleThreadExecutor()
     private var player:VideoView?=null
     private var playing:String?=null
     private var position=0
+    private var generation=0
     private val propertyId get()=intent.getStringExtra("propertyId")
     override fun onCreate(state:Bundle?) {
-        applySavedAppearance(); super.onCreate(state)
-        store=WalkthroughStore(applicationContext)
-        playing=state?.getString("playing") ?: intent.getStringExtra("clipId"); position=state?.getInt("position") ?: 0
-        onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { back() }
-        })
+        applySavedAppearance();super.onCreate(state)
+        ui=LensUi(this);store=WalkthroughStore(applicationContext)
+        playing=state?.getString("playing") ?: intent.getStringExtra("clipId");position=state?.getInt("position") ?: 0
+        onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true) { override fun handleOnBackPressed() { back() } })
         if(playing!=null) play(playing!!) else showLibrary()
     }
     private fun layout(title:String):LinearLayout {
-        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(24,0,24,0) }
+        generation++
+        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(ui.background) }
         root.setOnApplyWindowInsetsListener { v,insets ->
             val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            v.setPadding(b.left+24,b.top,b.right+24,b.bottom); insets
+            v.setPadding(b.left,b.top,b.right,b.bottom);insets
         }
-        root.addView(Button(this).apply { text="‹ Back"; isAllCaps=false; setOnClickListener { back() } })
-        root.addView(TextView(this).apply { text=title; textSize=24f; setPadding(12,20,12,24) })
-        setContentView(root); root.requestApplyInsets();return root
+        val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(ui.dp(8),ui.dp(8),ui.dp(16),ui.dp(8)) }
+        header.addView(ui.iconButton(R.drawable.ic_back,"Back") { back() },LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)))
+        header.addView(ui.text(title,23f,true),LinearLayout.LayoutParams(0,-2,1f))
+        root.addView(header)
+        setContentView(root);root.requestApplyInsets();return root
     }
     private fun showLibrary() {
-        player?.stopPlayback(); player=null; playing=null; position=0
-        val root=layout("Saved walkthroughs")
-        val scroll=ScrollView(this)
-        val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        player?.stopPlayback();player=null;playing=null;position=0
+        val root=layout("Walkthroughs")
+        val subtitle=ui.text("Your property visits, saved offline.",14f,false,ui.muted).apply { setPadding(ui.dp(22),0,ui.dp(22),ui.dp(20)) }
+        root.addView(subtitle)
+        val scroll=ScrollView(this).apply { clipToPadding=false }
+        val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(ui.dp(20),0,ui.dp(20),ui.dp(24)) }
         scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        val filter=propertyId
+        val filter=propertyId;val screen=generation
         io.execute {
             val result=runCatching { store.all(filter) }
             runOnUiThread {
-                if(isDestroyed || playing!=null) return@runOnUiThread
-                if(result.isFailure) list.addView(TextView(this).apply { text="Could not load recordings. Please reopen this screen." })
+                if(isDestroyed || generation!=screen) return@runOnUiThread
+                if(result.isFailure) list.addView(ui.text("Could not load recordings. Please reopen this screen."))
                 else {
                     val clips=result.getOrThrow()
-                    if(clips.isEmpty()) list.addView(TextView(this).apply { text="No recordings yet. Saved walkthroughs will be available here offline."; textSize=16f; setPadding(12,24,12,24) })
-                    clips.forEach { clip ->
-                        list.addView(Button(this).apply {
-                            text="▶  ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(clip.created))} · ${clip.durationMillis/1000}s"
-                            isAllCaps=false; gravity=Gravity.START or Gravity.CENTER_VERTICAL; minHeight=72
-                            setOnClickListener { position=0; play(clip.id) }
-                        })
+                    subtitle.text=if(clips.isEmpty()) "Your property visits, saved offline." else "${clips.size} saved · Available offline"
+                    if(clips.isEmpty()) {
+                        val empty=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(ui.dp(24),ui.dp(48),ui.dp(24),ui.dp(48));background=ui.shape(ui.surface,24) }
+                        empty.addView(ui.icon(R.drawable.ic_video),LinearLayout.LayoutParams(ui.dp(44),ui.dp(44)))
+                        empty.addView(ui.text("Your first visit starts here",20f,true).apply { gravity=Gravity.CENTER;setPadding(0,ui.dp(20),0,ui.dp(10)) })
+                        empty.addView(ui.text("Record a walkthrough and find it here whenever you need it.",15f,false,ui.muted).apply { gravity=Gravity.CENTER })
+                        list.addView(empty)
                     }
+                    clips.forEach { clip -> addCard(list,clip,screen) }
                 }
+            }
+        }
+    }
+    private fun addCard(list:LinearLayout,clip:SavedWalkthrough,screen:Int) {
+        val card=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            background=ui.shape(ui.surface,22);setPadding(ui.dp(12),ui.dp(12),ui.dp(8),ui.dp(12))
+            isClickable=true;isFocusable=true;contentDescription="Play walkthrough from ${DateFormat.getDateTimeInstance().format(Date(clip.created))}"
+            setOnClickListener { position=0;play(clip.id) }
+        }
+        val thumbnail=ImageView(this).apply {
+            scaleType=ImageView.ScaleType.CENTER_CROP;background=ui.shape(Color.BLACK,14);clipToOutline=true
+            setImageResource(R.drawable.ic_play);imageTintList=android.content.res.ColorStateList.valueOf(Color.WHITE)
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        card.addView(thumbnail,LinearLayout.LayoutParams(ui.dp(82),ui.dp(108)))
+        val words=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(ui.dp(14),0,ui.dp(4),0) }
+        words.addView(ui.text(DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(clip.created)),16f,true))
+        words.addView(ui.text("${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(clip.created))} · ${formatDuration(clip.durationMillis)}",13f,false,ui.muted).apply { setPadding(0,ui.dp(6),0,ui.dp(12)) })
+        words.addView(ui.text(if(clip.compassEmbedded) "Compass included" else "Video only",11f,true,ui.accent))
+        card.addView(words,LinearLayout.LayoutParams(0,-2,1f))
+        card.addView(ui.iconButton(R.drawable.ic_share,"Share walkthrough") { share(clip.id) },LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)))
+        list.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=ui.dp(14) })
+        io.execute {
+            val media=MediaMetadataRetriever()
+            val bitmap=try { media.setDataSource(store.movie(clip.id).absolutePath);media.getScaledFrameAtTime(0,MediaMetadataRetriever.OPTION_CLOSEST_SYNC,180,240) } catch(_:Exception) { null } finally { media.release() }
+            if(bitmap!=null) runOnUiThread {
+                if(isDestroyed || generation!=screen) bitmap.recycle()
+                else { thumbnail.imageTintList=null;thumbnail.setImageBitmap(bitmap) }
             }
         }
     }
     private fun play(id:String) {
         val file=runCatching { store.movie(id) }.getOrNull()
-        if(file==null || !file.isFile) { showLibrary(); return }
-        playing=id
+        if(file==null || !file.isFile) { showLibrary();return }
+        player?.stopPlayback();playing=id
         val root=layout("Walkthrough")
         val container=FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val view=VideoView(this)
@@ -74,18 +115,25 @@ class WalkthroughLibraryActivity:AppCompatActivity() {
         container.addView(view,FrameLayout.LayoutParams(-1,-1,Gravity.CENTER))
         container.addView(loading,FrameLayout.LayoutParams(-2,-2,Gravity.CENTER))
         player=view;root.addView(container,LinearLayout.LayoutParams(-1,0,1f))
-        view.setOnInfoListener { _,what,_ ->
-            if(what==android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) loading.visibility=android.view.View.GONE
-            false
-        }
+        val footer=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(ui.dp(20),ui.dp(16),ui.dp(20),ui.dp(20)) }
+        footer.addView(ui.action("Share video",R.drawable.ic_share) { share(id) },LinearLayout.LayoutParams(-1,ui.dp(56)))
+        footer.addView(ui.text("Shares the saved video as recorded, including any embedded compass.",12f,false,ui.muted).apply { gravity=Gravity.CENTER;setPadding(ui.dp(8),ui.dp(10),ui.dp(8),0) })
+        root.addView(footer)
+        view.setOnInfoListener { _,what,_ -> if(what==android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) loading.visibility=View.GONE;false }
         view.setMediaController(MediaController(this).apply { setAnchorView(view) })
-        view.setOnPreparedListener { view.seekTo(position); view.start() }
+        view.setOnPreparedListener { view.seekTo(position);view.start() }
         view.setOnErrorListener { _,_,_ ->
-            loading.visibility=android.view.View.GONE
-            android.app.AlertDialog.Builder(this).setTitle("Playback unavailable").setMessage("This video cannot be played on this device.").setPositiveButton("OK") { _,_ -> showLibrary() }.show();true
+            loading.visibility=View.GONE
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Playback unavailable").setMessage("This video cannot be played on this device.").setPositiveButton("OK") { _,_ -> showLibrary() }.show();true
         }
         view.setVideoPath(file.absolutePath)
     }
+    private fun share(id:String) {
+        player?.pause()
+        try { startActivity(Intent.createChooser(WalkthroughSharing.intent(this,id),"Share walkthrough")) }
+        catch(e:Exception) { androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Unable to share").setMessage(e.message ?: "Please try again.").setPositiveButton("OK",null).show() }
+    }
+    private fun formatDuration(ms:Long):String { val seconds=ms/1000;return "${seconds/60}:${(seconds%60).toString().padStart(2,'0')}" }
     private fun back() { if(playing!=null) showLibrary() else finish() }
     override fun onSaveInstanceState(out:Bundle) { out.putString("playing",playing);out.putInt("position",player?.currentPosition ?: position);super.onSaveInstanceState(out) }
     override fun onPause() { position=player?.currentPosition ?: position;player?.pause();super.onPause() }

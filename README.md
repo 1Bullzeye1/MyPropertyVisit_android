@@ -8,7 +8,7 @@ Independent native Kotlin Android app. Repository: https://github.com/1Bullzeye1
 - Clickable Home, property preparation, saved properties, details and editing screens.
 - Local SQLite property storage on a background executor, with validation and deletion confirmation.
 - Draft fields and navigation restored after activity recreation.
-- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. A compact compass is embedded into new recordings. Video sharing/export, accounts and sync are not implemented yet.
+- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. A compact compass is embedded into new recordings. Saved MP4 videos can be shared through the Android share sheet. Accounts and cloud sync are not implemented yet.
 
 ## Open and build
 
@@ -56,7 +56,7 @@ Completed MP4 files and atomic JSON sidecars are stored privately under files/wa
 - Physical Android device: permission denial, allowing permission in Settings, preview restart, record/stop/save, offline playback after app restart, and screen/background interruptions.
 - Check the saved frame orientation and preview framing, particularly on hardware with a nonstandard camera sensor orientation.
 - Verify low-storage and camera-in-use failure feedback.
-- Video sharing is a future milestone. New videos contain a compass; older videos cannot recover missing historical readings.
+- Saved videos can be shared from the library or playback. New videos contain a compass; older videos cannot recover missing historical readings.
 
 Automated recorder test: `./gradlew connectedDebugAndroidTest`. The test grants camera permission on the test device, records a short clip, verifies duration and a decodable frame, confirms no audio track, and cleans up only its own recordings. It also runs the independent property-database regression test. Requires a connected device/emulator with a functioning rear camera.
 
@@ -83,3 +83,13 @@ Build and lint passed. Four instrumentation tests passed on the Pixel 8 emulator
 Preview and recording now share an explicit portrait 9:16 ViewPort. This prevents a wider camera source buffer from being independently cropped by the encoder after the compass has been drawn. Placement uses that shared crop and handles 0/90/180/270-degree rotation before adding a safe inset for the whole dial and readout.
 
 Build and lint passed. On the connected Motorola edge 60 pro, the property/compass tests passed, including pixel-based crop/rotation bounds. The capture test then passed with the embedded marker in its expected normalized position and visible during on-screen playback. The playback test now checks the known compass marker instead of assuming the centre of the camera scene is bright. It also waits for the frame to reach the compositor. Only uniquely identified diagnostic recordings were removed by the test; existing user recordings were retained. Previously clipped MP4 overlays are already baked in and are not rewritten by this fix; record a new video to verify corrected placement.
+
+## Refreshed recorder, library and sharing
+
+The recorder now has a compact icon header and circular record/stop control. The saved library uses thumbnail cards with dates, durations and a compass/video-only badge. Library and playback screens follow the selected light/dark theme; the camera remains dark for viewing contrast. Playback keeps the video surface transparent over its black container to preserve the black-screen fix.
+
+Tap a card to play, its share icon to share directly, or **Share video** beneath playback. Android's system share sheet lets the user select the destination. The exact saved MP4 is shared, so baked-in compass overlays remain included without re-encoding. Old videos share their original content. No recipient is selected and no upload occurs automatically.
+
+FileProvider is non-exported and scoped to the walkthrough directory. Sharing grants temporary read access to one content URI, with video/mp4 MIME type and ClipData for receiver compatibility. Account settings and unrelated private files are outside the provider path. No storage permission is added.
+
+Build and lint passed. All seven tests passed on Motorola edge 60 pro, covering recorder/playback, compass placement and math, property persistence, selected-MP4 sharing permissions/MIME/readability, and rejection of unrelated private files. No real video was sent during testing. The refreshed screens still need the user's visual acceptance.

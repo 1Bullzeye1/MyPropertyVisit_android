@@ -44,6 +44,7 @@ internal fun Context.applySavedAppearance() {
 class RecorderActivity : AppCompatActivity() {
     private var provider:ProcessCameraProvider?=null
     private var boundPreview:Preview?=null
+    private lateinit var ui:LensUi
     private lateinit var compass:MagneticCompass
     private var overlay:OverlayEffect?=null
     private val overlayThread=HandlerThread("propertylens.compass.overlay").apply { start() }
@@ -70,21 +71,25 @@ class RecorderActivity : AppCompatActivity() {
     override fun onCreate(state: Bundle?) {
         applySavedAppearance()
         super.onCreate(state)
+        ui=LensUi(this)
         store=WalkthroughStore(applicationContext)
         compass=MagneticCompass(applicationContext)
-        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
+        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(14,21,30)) }
         root.setOnApplyWindowInsetsListener { v,insets ->
             val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             v.setPadding(b.left,b.top,b.right,b.bottom); insets
         }
-        val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),0,dp(8),0) }
-        header.addView(Button(this).apply { text="‹ Back"; isAllCaps=false; setOnClickListener { leave() } })
-        header.addView(TextView(this).apply { text="Walkthrough"; textSize=20f; setTextColor(Color.WHITE) },LinearLayout.LayoutParams(0,-2,1f))
-        header.addView(Button(this).apply { text="Info"; isAllCaps=false; setOnClickListener {
+        val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(dp(6),dp(8),dp(6),dp(8)) }
+        header.addView(ui.iconButton(R.drawable.ic_back,"Back",Color.WHITE) { leave() },LinearLayout.LayoutParams(dp(48),dp(48)))
+        val titles=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,0,0) }
+        titles.addView(ui.text("Property walkthrough",19f,true,Color.WHITE))
+        titles.addView(ui.text("VIDEO ONLY · SAVED OFFLINE",10f,true,Color.rgb(170,193,211)).apply { letterSpacing=0.12f;setPadding(0,dp(3),0,0) })
+        header.addView(titles,LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(ui.iconButton(R.drawable.ic_info,"Recording guide",Color.WHITE) {
             AlertDialog.Builder(this@RecorderActivity).setTitle("Video-only recording")
-                .setMessage("Records the rear camera without audio or app controls. Hold the phone upright. Recordings stay inside PropertyLens for offline playback. Backgrounding the app ends a recording. The compass is embedded at the top-left of new videos. Red points north; degrees show the rear camera magnetic bearing when held upright. A slash means no reliable reading. Old recordings cannot acquire missing compass readings.")
-                .setPositiveButton("OK",null).show()
-        } })
+                .setMessage("Records the rear camera without audio or app controls. Hold the phone upright. The compass is embedded into new videos: red points north and degrees show the camera's magnetic bearing. A slash means no reliable reading. Find offline videos under Saved, then tap Share video to send one using your chosen app.")
+                .setPositiveButton("Got it",null).show()
+        },LinearLayout.LayoutParams(dp(48),dp(48)))
         root.addView(header)
         preview=PreviewView(this).apply { implementationMode=PreviewView.ImplementationMode.COMPATIBLE; scaleType=PreviewView.ScaleType.FIT_CENTER }
         root.addView(preview,LinearLayout.LayoutParams(-1,0,1f))
@@ -95,11 +100,17 @@ class RecorderActivity : AppCompatActivity() {
             else requestPermission.launch(Manifest.permission.CAMERA)
         } }
         root.addView(permission)
-        val controls=LinearLayout(this).apply { gravity=Gravity.CENTER; setPadding(dp(12),dp(8),dp(12),dp(12)) }
-        saved=Button(this).apply { text="Saved"; isAllCaps=false; setOnClickListener { startActivity(Intent(this@RecorderActivity,WalkthroughLibraryActivity::class.java).putExtra("propertyId",propertyId)) } }
-        controls.addView(saved,LinearLayout.LayoutParams(0,dp(64),1f))
-        record=Button(this).apply { text="Record"; isAllCaps=false; isEnabled=false; setOnClickListener { if(active!=null) stopRecording() else recordVideo() } }
-        controls.addView(record,LinearLayout.LayoutParams(0,dp(64),1f))
+        val controls=LinearLayout(this).apply { gravity=Gravity.CENTER;setPadding(dp(20),dp(4),dp(20),dp(16)) }
+        saved=Button(this).apply {
+            text="Saved";isAllCaps=false;textSize=12f;setTextColor(Color.WHITE);background=null;stateListAnimator=null
+            val icon=androidx.appcompat.content.res.AppCompatResources.getDrawable(this@RecorderActivity,R.drawable.ic_folder)?.mutate()?.apply { setTint(Color.WHITE);setBounds(0,0,dp(25),dp(25)) }
+            setCompoundDrawables(null,icon,null,null);compoundDrawablePadding=dp(6)
+            setOnClickListener { startActivity(Intent(this@RecorderActivity,WalkthroughLibraryActivity::class.java).putExtra("propertyId",propertyId)) }
+        }
+        controls.addView(saved,LinearLayout.LayoutParams(0,dp(76),1f))
+        record=CaptureButton(this).apply { text="Record";isEnabled=false;stateListAnimator=null;setOnClickListener { if(active!=null) stopRecording() else recordVideo() } }
+        controls.addView(record,LinearLayout.LayoutParams(dp(88),dp(88)))
+        controls.addView(ui.text("HD\nVideo only",12f,false,Color.rgb(170,193,211)).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
         root.addView(controls)
         setContentView(root); root.requestApplyInsets()
         window.decorView.post { window.insetsController?.setSystemBarsAppearance(0,android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS) }
@@ -161,7 +172,7 @@ class RecorderActivity : AppCompatActivity() {
             active=video.output.prepareRecording(this,FileOutputOptions.Builder(target).build())
                 .start(ContextCompat.getMainExecutor(this)) { event ->
                     when(event) {
-                        is VideoRecordEvent.Start -> { record.text="Stop & save"; record.isEnabled=true; status.text="REC · Video only" }
+                        is VideoRecordEvent.Start -> { record.text="Stop & save"; record.isEnabled=true; status.text="● REC · Video only";status.setTextColor(Color.rgb(255,115,123)) }
                         is VideoRecordEvent.Finalize -> finishRecording(event,target)
                     }
                 }
@@ -207,6 +218,7 @@ class RecorderActivity : AppCompatActivity() {
         overlay?.close();overlay=null
     }
     private fun resetControls() {
+        status.setTextColor(Color.WHITE)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         record.text="Record"; record.isEnabled=capture!=null; saved.isEnabled=true
     }
