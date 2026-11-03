@@ -77,3 +77,9 @@ Regression tests cover north/east/south/west bearing maths, unavailable renderin
 ### Verification of playback and compass update
 
 Build and lint passed. Four instrumentation tests passed on the Pixel 8 emulator, including actual non-black on-screen playback and a compass marker found in an encoded video frame. These tests were run explicitly on emulator-5554, not on the user's phone, to preserve its saved videos. A camera-to-playback resource handoff freeze found during testing was addressed by releasing capture/overlay resources when leaving the recorder. The Motorola edge 60 pro needs user confirmation of old-video playback and a newly recorded compass video after updating; old recordings have no historical compass data.
+
+### Compass bounds correction
+
+Preview and recording now share an explicit portrait 9:16 ViewPort. This prevents a wider camera source buffer from being independently cropped by the encoder after the compass has been drawn. Placement uses that shared crop and handles 0/90/180/270-degree rotation before adding a safe inset for the whole dial and readout.
+
+Build and lint passed. On the connected Motorola edge 60 pro, the property/compass tests passed, including pixel-based crop/rotation bounds. The capture test then passed with the embedded marker in its expected normalized position and visible during on-screen playback. The playback test now checks the known compass marker instead of assuming the centre of the camera scene is bright. It also waits for the frame to reach the compositor. Only uniquely identified diagnostic recordings were removed by the test; existing user recordings were retained. Previously clipped MP4 overlays are already baked in and are not rewritten by this fix; record a new video to verify corrected placement.

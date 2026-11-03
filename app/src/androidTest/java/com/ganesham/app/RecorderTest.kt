@@ -63,11 +63,16 @@ class RecorderTest {
                 assertNotNull("Recorded file has no decodable frame",frame)
                 if(frame!=null) {
                     var goldPixels=0
+                    var markerPixels=0
                     for(y in 0 until (frame.height*0.3).toInt()) for(x in 0 until (frame.width*0.3).toInt()) {
                         val pixel=frame.getPixel(x,y)
-                        if(android.graphics.Color.red(pixel)>190 && android.graphics.Color.green(pixel) in 140..230 && android.graphics.Color.blue(pixel)<150) goldPixels++
+                        if(android.graphics.Color.red(pixel)>190 && android.graphics.Color.green(pixel) in 140..230 && android.graphics.Color.blue(pixel)<150) {
+                            goldPixels++
+                            if(x>frame.width*0.10 && x<frame.width*0.16 && y>frame.width*0.025 && y<frame.width*0.085) markerPixels++
+                        }
                     }
                     assertTrue("Compass top marker is missing from encoded top-left frame",goldPixels>2)
+                    assertTrue("Compass is shifted or clipped in the final recorded viewport",markerPixels>2)
                     frame.recycle()
                 }
             } finally { media.release() }
@@ -91,20 +96,26 @@ class RecorderTest {
                     }
                     rendered
                 }
-                val screen=instrumentation.uiAutomation.takeScreenshot()
-                assertNotNull(screen)
-                if(screen!=null) {
-                    var visible=0
-                    for(y in bounds[1]+bounds[3]/4 until bounds[1]+bounds[3]*3/4 step 8) {
-                        for(x in bounds[0]+bounds[2]/4 until bounds[0]+bounds[2]*3/4 step 8) {
-                            if(x in 0 until screen.width && y in 0 until screen.height) {
-                                val c=screen.getPixel(x,y)
-                                if(android.graphics.Color.red(c)+android.graphics.Color.green(c)+android.graphics.Color.blue(c)>50) visible++
+                // Camera content may be genuinely dark (e.g. a phone resting on
+                // a desk). The embedded gold marker is a known visible feature.
+                // Also allow queued frames to reach the compositor after the
+                // first-frame callback instead of assuming immediate display.
+                waitUntil("Recorded compass marker is not visible on the playback surface") {
+                    val screen=instrumentation.uiAutomation.takeScreenshot()
+                    var markerPixels=0
+                    if(screen!=null) {
+                        val left=bounds[0];val top=bounds[1];val width=bounds[2]
+                        for(y in top+(width*0.025).toInt() until top+(width*0.085).toInt()) {
+                            for(x in left+(width*0.10).toInt() until left+(width*0.16).toInt()) {
+                                if(x in 0 until screen.width && y in 0 until screen.height) {
+                                    val c=screen.getPixel(x,y)
+                                    if(android.graphics.Color.red(c)>190 && android.graphics.Color.green(c) in 140..230 && android.graphics.Color.blue(c)<150) markerPixels++
+                                }
                             }
                         }
+                        screen.recycle()
                     }
-                    assertTrue("Video surface is black despite successful decoding",visible>10)
-                    screen.recycle()
+                    markerPixels>2
                 }
             } finally { library.close() }
         } finally {

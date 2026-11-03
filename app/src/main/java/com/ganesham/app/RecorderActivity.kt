@@ -20,6 +20,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.camera.core.CameraEffect
 import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
+import android.util.Rational
 import androidx.camera.effects.OverlayEffect
 import android.os.Handler
 import android.os.HandlerThread
@@ -130,25 +132,16 @@ class RecorderActivity : AppCompatActivity() {
                 effect.setOnDrawListener { frame ->
                     val canvas=frame.overlayCanvas
                     canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
-                    val checkpoint=canvas.save()
-                    val crop=frame.cropRect
-                    canvas.translate(crop.left.toFloat(),crop.top.toFloat())
-                    val rotation=frame.rotationDegrees
-                    when(rotation) {
-                        90 -> { canvas.translate(0f,crop.height().toFloat());canvas.rotate(-90f) }
-                        180 -> { canvas.translate(crop.width().toFloat(),crop.height().toFloat());canvas.rotate(180f) }
-                        270 -> { canvas.translate(crop.width().toFloat(),0f);canvas.rotate(90f) }
-                    }
-                    val uprightWidth=if(rotation%180==0) crop.width() else crop.height()
-                    val uprightHeight=if(rotation%180==0) crop.height() else crop.width()
-                    val inset=minOf(uprightWidth,uprightHeight)*0.04f
-                    val scale=minOf(uprightWidth,uprightHeight)*0.18f/160f
-                    canvas.translate(inset,inset);canvas.scale(scale,scale)
-                    CompassArtwork.draw(canvas,compass.current())
-                    canvas.restoreToCount(checkpoint)
+                    CompassPlacement.draw(canvas,frame.cropRect,frame.rotationDegrees,compass.current())
                     true
                 }
-                val group=UseCaseGroup.Builder().addUseCase(viewfinder).addUseCase(video).addEffect(effect).build()
+                // Preview and encoder must share one sensor crop. Otherwise a
+                // 4:3 camera buffer can be cropped again to 16:9 after the dial
+                // has been drawn, cutting its left edge on some real phones.
+                val viewport=ViewPort.Builder(Rational(9,16),Surface.ROTATION_0)
+                    .setScaleType(ViewPort.FILL_CENTER).build()
+                val group=UseCaseGroup.Builder().setViewPort(viewport)
+                    .addUseCase(viewfinder).addUseCase(video).addEffect(effect).build()
                 provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,group)
                 capture=video; record.isEnabled=true; permission.visibility=android.view.View.GONE
                 status.text="Video only · No audio"

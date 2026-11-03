@@ -102,3 +102,27 @@ internal object CompassArtwork {
         canvas.restoreToCount(save)
     }
 }
+
+// Draw in the final shared viewport, then map back to the camera buffer.
+// Keep this transform separate so crop/rotation combinations can be tested
+// using real pixels, including the full dial and its degree readout.
+internal object CompassPlacement {
+    fun draw(canvas:Canvas,crop:android.graphics.Rect,rotation:Int,bearing:Double?) {
+        val save=canvas.save()
+        canvas.translate(crop.left.toFloat(),crop.top.toFloat())
+        when(rotation) {
+            90 -> { canvas.translate(0f,crop.height().toFloat());canvas.rotate(-90f) }
+            180 -> { canvas.translate(crop.width().toFloat(),crop.height().toFloat());canvas.rotate(180f) }
+            270 -> { canvas.translate(crop.width().toFloat(),0f);canvas.rotate(90f) }
+        }
+        val width=if(rotation%180==0) crop.width() else crop.height()
+        val height=if(rotation%180==0) crop.height() else crop.width()
+        val inset=minOf(width,height)*0.04f
+        val scale=minOf(minOf(width,height)*0.18f/160f,(width-2*inset)/160f,(height-2*inset)/196f)
+        if(scale>0) {
+            canvas.translate(inset,inset);canvas.scale(scale,scale)
+            CompassArtwork.draw(canvas,bearing)
+        }
+        canvas.restoreToCount(save)
+    }
+}
