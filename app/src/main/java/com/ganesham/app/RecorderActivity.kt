@@ -18,6 +18,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.camera.core.CameraEffect
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.effects.OverlayEffect
+import android.os.Handler
+import android.os.HandlerThread
+import android.graphics.PorterDuff
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -34,6 +40,11 @@ internal fun Context.applySavedAppearance() {
 }
 
 class RecorderActivity : AppCompatActivity() {
+    private var provider:ProcessCameraProvider?=null
+    private var boundPreview:Preview?=null
+    private lateinit var compass:MagneticCompass
+    private var overlay:OverlayEffect?=null
+    private val overlayThread=HandlerThread("propertylens.compass.overlay").apply { start() }
     private lateinit var preview: PreviewView
     private lateinit var status: TextView
     private lateinit var record: Button
@@ -58,6 +69,7 @@ class RecorderActivity : AppCompatActivity() {
         applySavedAppearance()
         super.onCreate(state)
         store=WalkthroughStore(applicationContext)
+        compass=MagneticCompass(applicationContext)
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
         root.setOnApplyWindowInsetsListener { v,insets ->
             val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -68,7 +80,7 @@ class RecorderActivity : AppCompatActivity() {
         header.addView(TextView(this).apply { text="Walkthrough"; textSize=20f; setTextColor(Color.WHITE) },LinearLayout.LayoutParams(0,-2,1f))
         header.addView(Button(this).apply { text="Info"; isAllCaps=false; setOnClickListener {
             AlertDialog.Builder(this@RecorderActivity).setTitle("Video-only recording")
-                .setMessage("Records the rear camera without audio or app controls. Hold the phone upright. Recordings stay inside PropertyLens for offline playback. Backgrounding the app ends a recording. Compass and sharing will be added next.")
+                .setMessage("Records the rear camera without audio or app controls. Hold the phone upright. Recordings stay inside PropertyLens for offline playback. Backgrounding the app ends a recording. The compass is embedded at the top-left of new videos. Red points north; degrees show the rear camera magnetic bearing when held upright. A slash means no reliable reading. Old recordings cannot acquire missing compass readings.")
                 .setPositiveButton("OK",null).show()
         } })
         root.addView(header)
@@ -102,12 +114,42 @@ class RecorderActivity : AppCompatActivity() {
             if(isDestroyed || isFinishing) return@addListener
             try {
                 val provider=future.get()
+                this.provider=provider
                 check(provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) { "This device has no rear camera." }
                 val viewfinder=Preview.Builder().setTargetAspectRatio(AspectRatio.RATIO_16_9).setTargetRotation(Surface.ROTATION_0).build()
+                boundPreview=viewfinder
                 viewfinder.setSurfaceProvider(preview.surfaceProvider)
                 val recorder=Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD,FallbackStrategy.lowerQualityOrHigherThan(Quality.HD))).build()
                 val video=VideoCapture.withOutput(recorder).apply { targetRotation=Surface.ROTATION_0 }
-                provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,viewfinder,video)
+                val effect=OverlayEffect(CameraEffect.PREVIEW or CameraEffect.VIDEO_CAPTURE,0,Handler(overlayThread.looper)) { failure ->
+                    runOnUiThread {
+                        if(!isDestroyed) { stopRecording();record.isEnabled=false;status.text="Compass overlay failed: ${failure.message}. Reopen the recorder." }
+                    }
+                }
+                overlay=effect
+                effect.setOnDrawListener { frame ->
+                    val canvas=frame.overlayCanvas
+                    canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
+                    val checkpoint=canvas.save()
+                    val crop=frame.cropRect
+                    canvas.translate(crop.left.toFloat(),crop.top.toFloat())
+                    val rotation=frame.rotationDegrees
+                    when(rotation) {
+                        90 -> { canvas.translate(0f,crop.height().toFloat());canvas.rotate(-90f) }
+                        180 -> { canvas.translate(crop.width().toFloat(),crop.height().toFloat());canvas.rotate(180f) }
+                        270 -> { canvas.translate(crop.width().toFloat(),0f);canvas.rotate(90f) }
+                    }
+                    val uprightWidth=if(rotation%180==0) crop.width() else crop.height()
+                    val uprightHeight=if(rotation%180==0) crop.height() else crop.width()
+                    val inset=minOf(uprightWidth,uprightHeight)*0.04f
+                    val scale=minOf(uprightWidth,uprightHeight)*0.18f/160f
+                    canvas.translate(inset,inset);canvas.scale(scale,scale)
+                    CompassArtwork.draw(canvas,compass.current())
+                    canvas.restoreToCount(checkpoint)
+                    true
+                }
+                val group=UseCaseGroup.Builder().addUseCase(viewfinder).addUseCase(video).addEffect(effect).build()
+                provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,group)
                 capture=video; record.isEnabled=true; permission.visibility=android.view.View.GONE
                 status.text="Video only · No audio"
             } catch(e:Exception) { status.text="Camera unavailable: ${e.message ?: "Please try reopening the recorder."}" }
@@ -152,29 +194,43 @@ class RecorderActivity : AppCompatActivity() {
         }
         val store=this.store; val property=propertyId
         io.execute {
-            val result=runCatching { store.complete(file,property,duration) }
+            val result=runCatching { store.complete(file,property,duration,compassEmbedded=true) }
             runOnUiThread {
                 finalizing=false
                 if(isDestroyed) { io.shutdown() }
                 else {
                     resetControls()
                     status.text=if(result.isSuccess) "Saved offline · Open Saved to play" else "Video saved, but its details could not be saved. Please check storage and try again."
+                    if(!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) releaseCamera()
                     if(closeAfterSave) finish()
                 }
             }
         }
+    }
+    private fun releaseCamera() {
+        val useCases=listOfNotNull(boundPreview,capture)
+        if(useCases.isNotEmpty()) provider?.unbind(*useCases.toTypedArray())
+        capture=null;boundPreview=null
+        overlay?.close();overlay=null
     }
     private fun resetControls() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         record.text="Record"; record.isEnabled=capture!=null; saved.isEnabled=true
     }
     private fun leave() { if(active!=null || finalizing) { closeAfterSave=true; stopRecording() } else finish() }
-    override fun onResume() { super.onResume(); if(::record.isInitialized && ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED) startCamera() }
-    override fun onStop() { stopRecording(); super.onStop() }
+    override fun onResume() { super.onResume(); if(::compass.isInitialized) compass.start(); if(::record.isInitialized && ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED) startCamera() }
+    override fun onStop() {
+        stopRecording()
+        if(::compass.isInitialized) compass.stop()
+        if(active==null && !finalizing) releaseCamera()
+        super.onStop()
+    }
     override fun onDestroy() {
         // Finalize may arrive after destruction, so retain the small save executor
         // until that callback has had a chance to submit its final write.
         if(active==null && !finalizing) io.shutdown()
+        releaseCamera()
+        overlayThread.quitSafely()
         super.onDestroy()
     }
 }

@@ -21,7 +21,7 @@ class WalkthroughLibraryActivity:AppCompatActivity() {
     override fun onCreate(state:Bundle?) {
         applySavedAppearance(); super.onCreate(state)
         store=WalkthroughStore(applicationContext)
-        playing=state?.getString("playing"); position=state?.getInt("position") ?: 0
+        playing=state?.getString("playing") ?: intent.getStringExtra("clipId"); position=state?.getInt("position") ?: 0
         onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { back() }
         })
@@ -68,11 +68,20 @@ class WalkthroughLibraryActivity:AppCompatActivity() {
         if(file==null || !file.isFile) { showLibrary(); return }
         playing=id
         val root=layout("Walkthrough")
-        val view=VideoView(this).apply { setBackgroundColor(Color.BLACK) }
-        player=view;root.addView(view,LinearLayout.LayoutParams(-1,0,1f))
+        val container=FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val view=VideoView(this)
+        val loading=ProgressBar(this).apply { tag="videoLoading" }
+        container.addView(view,FrameLayout.LayoutParams(-1,-1,Gravity.CENTER))
+        container.addView(loading,FrameLayout.LayoutParams(-2,-2,Gravity.CENTER))
+        player=view;root.addView(container,LinearLayout.LayoutParams(-1,0,1f))
+        view.setOnInfoListener { _,what,_ ->
+            if(what==android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) loading.visibility=android.view.View.GONE
+            false
+        }
         view.setMediaController(MediaController(this).apply { setAnchorView(view) })
         view.setOnPreparedListener { view.seekTo(position); view.start() }
         view.setOnErrorListener { _,_,_ ->
+            loading.visibility=android.view.View.GONE
             android.app.AlertDialog.Builder(this).setTitle("Playback unavailable").setMessage("This video cannot be played on this device.").setPositiveButton("OK") { _,_ -> showLibrary() }.show();true
         }
         view.setVideoPath(file.absolutePath)

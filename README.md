@@ -8,7 +8,7 @@ Independent native Kotlin Android app. Repository: https://github.com/1Bullzeye1
 - Clickable Home, property preparation, saved properties, details and editing screens.
 - Local SQLite property storage on a background executor, with validation and deletion confirmation.
 - Draft fields and navigation restored after activity recreation.
-- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. Compass, video sharing/export, accounts and sync are not implemented yet.
+- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. A compact compass is embedded into new recordings. Video sharing/export, accounts and sync are not implemented yet.
 
 ## Open and build
 
@@ -56,10 +56,24 @@ Completed MP4 files and atomic JSON sidecars are stored privately under files/wa
 - Physical Android device: permission denial, allowing permission in Settings, preview restart, record/stop/save, offline playback after app restart, and screen/background interruptions.
 - Check the saved frame orientation and preview framing, particularly on hardware with a nonstandard camera sensor orientation.
 - Verify low-storage and camera-in-use failure feedback.
-- Compass and video sharing are separate future milestones; this branch does not claim iOS feature parity yet.
+- Video sharing is a future milestone. New videos contain a compass; older videos cannot recover missing historical readings.
 
 Automated recorder test: `./gradlew connectedDebugAndroidTest`. The test grants camera permission on the test device, records a short clip, verifies duration and a decodable frame, confirms no audio track, and cleans up only its own recordings. It also runs the independent property-database regression test. Requires a connected device/emulator with a functioning rear camera.
 
 ### Recorder verification
 
 `assembleDebug`, `lintDebug`, and both connected instrumentation tests passed on the Pixel 8 API 36 emulator. The recorder test produced a real camera clip, checked positive duration and video width, decoded a frame, and confirmed that the file contains no audio track. Physical-device camera behaviour and the interruption checklist remain pending. Lint reports no errors; dependency-update, portrait-orientation, backup-policy and style recommendations remain. This feature branch is not merged to main until device review.
+
+## Motorola playback fix and embedded compass
+
+Playback now puts the black background on the video container rather than VideoView itself. An opaque background on the SurfaceView can hide decoded video. A progress indicator stays visible until the first video frame is rendered. Camera use cases and overlay resources are released when leaving the recorder so they do not compete with playback.
+
+CameraX OverlayEffect embeds a compact dial into both the preview and the saved MP4. N/E/S/W and degrees are included at the top-left. The red needle points to magnetic north; the gold marker represents the rear camera's forward direction. This is a magnetic camera bearing while the phone is held upright. It is not the same as the phone's top edge when pointing vertically upward. Without a usable magnetometer/orientation sensor, with unreliable or stale readings, or with the camera pointing nearly straight up/down, the dial shows a slash and dash instead of inventing a bearing. No location permission is requested.
+
+Older JSON sidecars remain compatible and default compassEmbedded to false. Old MP4 files remain unchanged, so they do not gain missing compass data. New sidecars mark the embedded overlay.
+
+Regression tests cover north/east/south/west bearing maths, unavailable rendering, the compass marker inside a decoded recorded frame, and actual visible playback on the screen (the previous test only checked decoding). Physical Motorola compass accuracy and field-of-view review remain required.
+
+### Verification of playback and compass update
+
+Build and lint passed. Four instrumentation tests passed on the Pixel 8 emulator, including actual non-black on-screen playback and a compass marker found in an encoded video frame. These tests were run explicitly on emulator-5554, not on the user's phone, to preserve its saved videos. A camera-to-playback resource handoff freeze found during testing was addressed by releasing capture/overlay resources when leaving the recorder. The Motorola edge 60 pro needs user confirmation of old-video playback and a newly recorded compass video after updating; old recordings have no historical compass data.
