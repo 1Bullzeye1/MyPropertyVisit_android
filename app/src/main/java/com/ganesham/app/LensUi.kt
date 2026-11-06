@@ -15,13 +15,13 @@ internal class LensUi(val context:Context) {
     fun dp(n:Int)=(n*context.resources.displayMetrics.density).toInt()
     private val dark get()=context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK==Configuration.UI_MODE_NIGHT_YES
     private fun color(day:String,night:String)=Color.parseColor(if(dark) night else day)
-    val background get()=color("#F6F5FB","#111820")
-    val surface get()=color("#FFFFFF","#1B2632")
-    val ink get()=color("#25213D","#E9EFF5")
-    val muted get()=color("#69647C","#BAC5CF")
-    val accent get()=color("#6250C8","#94C7ED")
-    val action get()=color("#6250C8","#295C7C")
-    val line get()=color("#E8E4F3","#334352")
+    val background get()=color("#F6F5FB","#120F20")
+    val surface get()=color("#FFFFFF","#201A32")
+    val ink get()=color("#25213D","#F1ECFF")
+    val muted get()=color("#69647C","#C9BED9")
+    val accent get()=color("#6250C8","#C6B7FA")
+    val action get()=color("#6250C8","#5945A4")
+    val line get()=color("#E8E4F3","#423453")
     fun shape(fill:Int,radius:Int=18)=GradientDrawable().apply { setColor(fill);cornerRadius=dp(radius).toFloat() }
     fun text(value:String,size:Float=16f,bold:Boolean=false,color:Int=ink)=TextView(context).apply {
         text=value;textSize=size;setTextColor(color)
@@ -33,6 +33,42 @@ internal class LensUi(val context:Context) {
         background=RippleDrawable(ColorStateList.valueOf(0x226250C8),shape(Color.TRANSPARENT,24),shape(Color.WHITE,24))
         contentDescription=label;setPadding(dp(12),dp(12),dp(12),dp(12));setOnClickListener { onClick() }
     }
+    fun hero(title: String, subtitle: String) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(22), dp(22), dp(22), dp(22))
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(color("#282148", "#282044"), color("#514184", "#493675"))).apply {
+            cornerRadius = dp(24).toFloat()
+        }
+        addView(text(title, 28f, false, Color.WHITE).apply { typeface = Typeface.SERIF })
+        addView(text(subtitle, 14f, false, 0xFFEAE4FB.toInt()).apply { setPadding(0, dp(8), 0, 0) })
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) }
+    }
+
+    fun menuCard(title: String, subtitle: String, resource: Int, action: (() -> Unit)? = null) =
+        LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            background = shape(surface, 20).apply { setStroke(dp(1), line) }
+            addView(icon(resource).apply {
+                background = shape(color("#EEEAFB", "#332747"), 13)
+                setPadding(dp(11), dp(11), dp(11), dp(11))
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(8), 0)
+                addView(text(title, 16f, true))
+                addView(text(subtitle, 13f, false, muted))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            if (action != null) {
+                addView(text("↗", 18f, false, accent))
+                isFocusable = true
+                setOnClickListener { action() }
+            }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) }
+        }
+
     fun action(label:String,resource:Int,onClick:()->Unit)=Button(context).apply {
         text=label;isAllCaps=false;textSize=16f;setTypeface(typeface,Typeface.BOLD)
         setTextColor(Color.WHITE);background=RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),shape(action,18),shape(Color.WHITE,18))

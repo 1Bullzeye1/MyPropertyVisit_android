@@ -15,6 +15,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.SystemClock
+import android.content.Intent
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
@@ -54,18 +56,21 @@ class MainActivity : AppCompatActivity() {
     private var route = "home"
     private var selected: String? = null
     private var working = false
+    private var launchStarted = 0L
+    private var loadingOverlay: FrameLayout? = null
+    private var launchProgress: ProgressBar? = null
     private var draftName = ""
     private var draftLocation = ""
     private var draftType = "Flat"
     private val types = listOf("Land", "Flat", "Building")
     private val dark get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     private fun color(light: String, night: String) = Color.parseColor(if(dark) night else light)
-    private val background get() = color("#F6F5FB", "#111820")
-    private val ink get() = color("#25213D", "#E9EFF5")
-    private val secondary get() = color("#69647C", "#BAC5CF")
-    private val accent get() = color("#6250C8", "#94C7ED")
-    private val surface get() = color("#FFFFFF", "#1B2632")
-    private val primary get() = color("#6250C8", "#295C7C")
+    private val background get() = color("#F6F5FB", "#120F20")
+    private val ink get() = color("#25213D", "#F1ECFF")
+    private val secondary get() = color("#69647C", "#C9BED9")
+    private val accent get() = color("#6250C8", "#C6B7FA")
+    private val surface get() = color("#FFFFFF", "#201A32")
+    private val primary get() = color("#6250C8", "#5945A4")
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private val preferences get() = getSharedPreferences("propertylens.settings", Context.MODE_PRIVATE)
@@ -88,6 +93,11 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { if (route == "home") finish() else back() }
         })
+        if (state == null && !initialLaunchShown) {
+            initialLaunchShown = true
+            launchStarted = SystemClock.uptimeMillis()
+            loadingOverlay = makeLoadingOverlay()
+        }
         render()
         window.decorView.post {
             window.insetsController?.setSystemBarsAppearance(if(dark) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
@@ -95,10 +105,44 @@ class MainActivity : AppCompatActivity() {
         }
         load()
     }
+    private fun makeLoadingOverlay(): FrameLayout = FrameLayout(this).apply {
+        setBackgroundColor(this@MainActivity.background)
+        isClickable = true
+        addView(ImageView(this@MainActivity).apply {
+            setImageResource(R.drawable.launch_art)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }, FrameLayout.LayoutParams(-1, -1))
+        launchProgress = ProgressBar(this@MainActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 30
+            progressTintList = ColorStateList.valueOf(accent)
+            progressBackgroundTintList = ColorStateList.valueOf(Color.parseColor("#60908BB5"))
+            contentDescription = "Loading PropertyLens"
+        }
+        addView(launchProgress, FrameLayout.LayoutParams(dp(132), dp(6), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            launchProgress?.translationY = height * 0.68f
+        }
+    }
+
     private fun load() {
         worker.execute {
-            try { val loaded = store.all(); runOnUiThread { if(!isDestroyed) { records = loaded; if(route != "form") render() } } }
-            catch(e: Exception) { runOnUiThread { if(!isDestroyed) showError("Could not load properties. Please reopen the app.") } }
+            val result = runCatching { store.all() }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess { records = it; if (route != "form") render() }
+                    .onFailure { showError("Could not load properties. Please reopen the app.") }
+                launchProgress?.setProgress(100, true)
+                val overlay = loadingOverlay ?: return@runOnUiThread
+                val remaining = (2000 - (SystemClock.uptimeMillis() - launchStarted)).coerceAtLeast(0)
+                overlay.postDelayed({
+                    overlay.animate().alpha(0f).setDuration(240).withEndAction {
+                        (overlay.parent as? FrameLayout)?.removeView(overlay)
+                        loadingOverlay = null
+                        launchProgress = null
+                    }.start()
+                }, remaining)
+            }
         }
     }
     private fun text(value: String, size: Float = 16f, bold: Boolean = false, tint: Int = ink): TextView = TextView(this).apply {
@@ -110,7 +154,7 @@ class MainActivity : AppCompatActivity() {
     private fun card(title: String, subtitle: String, symbol: String, filled: Boolean = false, action: () -> Unit) {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(18), dp(20), dp(18), dp(20)) }
         val shape = rounded(if(filled) primary else surface)
-        row.background = RippleDrawable(ColorStateList.valueOf(color("#226250C8", "#2294C7ED")), shape, rounded(Color.WHITE))
+        row.background = RippleDrawable(ColorStateList.valueOf(color("#226250C8", "#22C6B7FA")), shape, rounded(Color.WHITE))
         row.isClickable = true; row.isFocusable = true
         row.setOnClickListener { if(!working) action() }
         row.addView(text(symbol, 25f, false, if(filled) Color.WHITE else accent), LinearLayout.LayoutParams(dp(40), -2))
@@ -131,7 +175,15 @@ class MainActivity : AppCompatActivity() {
         }
         val scroll = ScrollView(this).apply { isFillViewport = true }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22),dp(24),dp(22),dp(24)) }
-        scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1,-1)); setContentView(root); root.requestApplyInsets()
+        scroll.addView(body)
+        root.addView(scroll, LinearLayout.LayoutParams(-1,-1))
+        val container = FrameLayout(this).apply { addView(root, FrameLayout.LayoutParams(-1, -1)) }
+        loadingOverlay?.let {
+            (it.parent as? FrameLayout)?.removeView(it)
+            container.addView(it, FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(container)
+        root.requestApplyInsets()
         if(route != "home") add(text("‹  Back", 16f, true, accent).apply { minHeight = dp(48); gravity = Gravity.CENTER_VERTICAL; setOnClickListener { back() } })
         when(route) {
             "home" -> home()
@@ -139,13 +191,18 @@ class MainActivity : AppCompatActivity() {
             "saved" -> saved()
             "form" -> form()
             "details" -> details()
-            "join" -> { add(text("Join a property call",26f,true)); add(EditText(this).apply { hint = "Invitation code"; setSingleLine(); setTextColor(ink) }); add(text("Call joining is coming soon",18f,true)); add(text("Live calls are not connected in this Android build. Invitation codes cannot be used yet.",16f,false,secondary)) }
+            "join" -> { add(LensUi(this).hero("Join a property call", "Enter the invitation code for a property tour.")); add(EditText(this).apply { hint = "Invitation code"; setSingleLine(); setTextColor(ink) }); add(text("Call joining is coming soon",18f,true)); add(text("Live calls are not connected in this Android build. Invitation codes cannot be used yet.",16f,false,secondary)) }
         }
     }
     private fun home() {
         selected = null
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(text("⌖  PropertyLens",24f,true,accent), LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_propertylens)
+            background = rounded(primary, 8f)
+            clipToOutline = true
+        }, LinearLayout.LayoutParams(dp(36), dp(36)))
+        header.addView(text("PropertyLens",24f,true,ink).apply { setPadding(dp(10),0,0,0) }, LinearLayout.LayoutParams(0,-2,1f))
         header.addView(text("⚙",26f,false,accent).apply {
             gravity=Gravity.CENTER; contentDescription="Settings"; isFocusable=true
             setOnClickListener { go("settings") }
@@ -153,14 +210,20 @@ class MainActivity : AppCompatActivity() {
         add(header,24)
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(24),dp(26),dp(24),dp(26))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(color("#282148","#233A4B"),color("#514184","#31566A"))).apply { cornerRadius = dp(26).toFloat() }
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(color("#282148","#282044"),color("#514184","#493675"))).apply { cornerRadius = dp(26).toFloat() }
         }
         hero.addView(text("A CLEARER VIEW",12f,true,Color.parseColor("#DAD4F4")).apply { letterSpacing = 0.18f })
         hero.addView(text("Every angle.\nEvery detail.",36f,false,Color.WHITE).apply { typeface = Typeface.create("serif",Typeface.NORMAL); setPadding(0,dp(20),0,dp(18)) })
         hero.addView(text("Explore land, flats and buildings with the details that matter.",17f,false,Color.parseColor("#D9DFE8")))
         hero.addView(text("Live tours  ·  Directions  ·  Measurements",12f,false,Color.WHITE).apply { setPadding(0,dp(24),0,0) })
         add(hero,24)
-        card("Record walkthrough", "Record video and save it offline", "◉") { startActivity(android.content.Intent(this,RecorderActivity::class.java).putExtra("propertyId",selected)) }
+        card("Record walkthrough", "Capture video with compass and take photos", "◉", true) { startActivity(android.content.Intent(this,RecorderActivity::class.java).putExtra("propertyId",selected)) }
+        add(LensUi(this).menuCard("Room photos", "Open the gallery and edit measurements", R.drawable.ic_folder) {
+            startActivity(Intent(this, RoomPhotosActivity::class.java))
+        })
+        add(LensUi(this).menuCard("Photos & videos", "Browse visit sessions and saved walkthroughs", R.drawable.ic_video) {
+            startActivity(Intent(this, WalkthroughLibraryActivity::class.java))
+        })
         add(text("Take a closer look",21f,true),18)
         card("Start a property call", "Prepare your property for a tour", "+",true) { selected = null; draftName=""; draftLocation=""; draftType="Flat"; go("form") }
         card("Join a call", "Enter an invitation code", "↗") { go("join") }
@@ -168,12 +231,13 @@ class MainActivity : AppCompatActivity() {
         add(text("Built for a better-informed property visit.",12f,false,secondary).apply { gravity=Gravity.CENTER },0)
     }
     private fun saved() {
-        add(text("Saved properties",27f,true))
+        add(LensUi(this).hero("Saved properties", "Open a property to see its details and walkthroughs."))
         if(records.isEmpty()) add(text("No saved properties yet. Prepare a property from Home to save its details here.",16f,false,secondary))
         records.forEach { p -> card(p.name,"${p.type} · ${p.location}","⌂") { selected=p.id; go("details") } }
     }
     private fun form() {
-        add(text(if(selected == null) "Prepare a property" else "Edit property",27f,true))
+        add(LensUi(this).hero(if (selected == null) "Prepare a property" else "Edit property",
+            "Save the name, type and location for your next visit."))
         add(text("Property name",14f,true))
         nameInput = EditText(this).apply { id=R.id.property_name; hint="e.g. Green Valley Flat"; setText(draftName); setSingleLine(); setTextColor(ink); setHintTextColor(secondary) }; add(nameInput)
         add(text("Property type",14f,true))
@@ -198,10 +262,15 @@ class MainActivity : AppCompatActivity() {
     private fun details() {
         val p=records.firstOrNull { it.id==selected }
         if(p==null) { add(text("Property unavailable",25f,true)); return }
-        add(text(p.name,27f,true)); add(text("${p.type}\n\n${p.location}",18f))
+        add(LensUi(this).hero(p.name, "${p.type} · ${p.location}"))
         card("Edit property","Update name, type or address","✎") { draftName=p.name; draftType=p.type; draftLocation=p.location; go("form") }
         card("Record walkthrough","Record video and save it offline","◉") { startActivity(android.content.Intent(this,RecorderActivity::class.java).putExtra("propertyId",selected)) }
-        add(text("Measurements and visit history will appear here in a later milestone.",14f,false,secondary))
+        add(LensUi(this).menuCard("Property photos & videos", "Browse this property's visits and recordings", R.drawable.ic_video) {
+            startActivity(Intent(this, WalkthroughLibraryActivity::class.java).putExtra("propertyId", p.id))
+        })
+        add(LensUi(this).menuCard("Room photos & dimensions", "Open this property's gallery", R.drawable.ic_folder) {
+            startActivity(Intent(this, RoomPhotosActivity::class.java).putExtra("propertyId", p.id))
+        })
         add(Button(this).apply {
             setText(R.string.delete_property); isAllCaps=false
             setOnClickListener {
@@ -217,7 +286,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
     private fun settings() {
-        add(text("Settings",27f,true))
+        add(LensUi(this).hero("Make it yours", "Manage your local profile and choose how PropertyLens looks."))
         add(text("Account",19f,true))
         val name = preferences.getString("profile.name", "").orEmpty()
         card("Manage local profile", name.ifBlank { "Add your name and role" }, "♙") { editProfile() }
@@ -225,7 +294,10 @@ class MainActivity : AppCompatActivity() {
         add(text("Sign-in, account switching and cloud sync are not connected yet. Your local profile stays on this device and is not a verified account.",14f,false,secondary),24)
         add(text("Display theme",19f,true))
         val choices = listOf("system", "light", "dark")
-        val group = RadioGroup(this)
+        val group = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            background = rounded(surface)
+        }
         val current = preferences.getString("theme", "system") ?: "system"
         choices.forEach { choice ->
             group.addView(RadioButton(this).apply {
@@ -234,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(ink); minHeight=dp(52); tag=choice
                 buttonTintList=ColorStateList.valueOf(accent)
                 isChecked=choice==current
-            })
+            }, RadioGroup.LayoutParams(0, -2, 1f))
         }
         group.setOnCheckedChangeListener { _, checked ->
             val choice=group.findViewById<RadioButton>(checked)?.tag as? String ?: return@setOnCheckedChangeListener
@@ -281,5 +353,6 @@ class MainActivity : AppCompatActivity() {
     private fun rememberDraft() { if(route=="form" && ::nameInput.isInitialized) { draftName=nameInput.text.toString().trim(); draftLocation=locationInput.text.toString().trim(); draftType=types[typeInput.selectedItemPosition] } }
     override fun onSaveInstanceState(out: Bundle) { rememberDraft(); out.putString("route",route); out.putString("selected",selected); out.putString("name",draftName); out.putString("location",draftLocation); out.putString("type",draftType); super.onSaveInstanceState(out) }
     private fun back() { if(working) return; rememberDraft(); go(when(route) { "details" -> "saved"; "form" -> if(selected==null) "home" else "details"; "record" -> if(selected==null) "home" else "details"; else -> "home" }) }
+    private companion object { var initialLaunchShown = false }
     override fun onDestroy() { worker.execute { store.close() }; worker.shutdown(); super.onDestroy() }
 }

@@ -33,6 +33,7 @@ class RecorderTest {
         val context=instrumentation.targetContext
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName,Manifest.permission.CAMERA)
         val store=WalkthroughStore(context)
+        val roomMedia = RoomMediaStore(context)
         val property="recorder-test-${java.util.UUID.randomUUID()}"
         val scenario=ActivityScenario.launch<RecorderActivity>(Intent(context,RecorderActivity::class.java).putExtra("propertyId",property))
         try {
@@ -47,11 +48,45 @@ class RecorderTest {
                 scenario.onActivity { activity -> started=button(activity.window.decorView,"Stop & save")?.isEnabled==true }
                 started
             }
-            Thread.sleep(2500)
+            Thread.sleep(1200)
+            scenario.onActivity { button(it.window.decorView, "Pause")!!.performClick() }
+            waitUntil("Recording did not pause") {
+                var paused = false
+                scenario.onActivity { paused = button(it.window.decorView, "Resume")?.isEnabled == true }
+                paused
+            }
+            scenario.onActivity { button(it.window.decorView, "Photo")!!.performClick() }
+            waitUntil("Photo taken during pause was not saved") { roomMedia.all(property).size == 1 }
+            val photo = roomMedia.all(property).single()
+            val image = android.graphics.BitmapFactory.decodeFile(roomMedia.image(photo.id).absolutePath)
+            assertNotNull("Saved photo is not a decodable JPEG", image)
+            val gold = (0 until (image.height * .3).toInt()).sumOf { y ->
+                (0 until (image.width * .3).toInt()).count { x ->
+                    val pixel = image.getPixel(x, y)
+                    android.graphics.Color.red(pixel) > 190 && android.graphics.Color.green(pixel) in 140..230 && android.graphics.Color.blue(pixel) < 150
+                }
+            }
+            image.recycle()
+            assertTrue("Saved photo is missing the compass marker", gold > 2)
+            waitUntil("Resume was not enabled after photo save") {
+                var ready = false
+                scenario.onActivity { ready = button(it.window.decorView, "Resume")?.isEnabled == true }
+                ready
+            }
+            scenario.onActivity { button(it.window.decorView, "Resume")!!.performClick() }
+            waitUntil("Recording did not resume") {
+                var resumed = false
+                scenario.onActivity { resumed = button(it.window.decorView, "Pause")?.isEnabled == true }
+                resumed
+            }
+            Thread.sleep(1200)
             scenario.onActivity { button(it.window.decorView,"Stop & save")!!.performClick() }
             waitUntil("Movie and metadata were not saved") { store.all(property).isNotEmpty() }
             val clip=store.all(property).single()
             assertTrue(clip.durationMillis>0)
+            assertNotNull(clip.visitId)
+            assertEquals(clip.visitId, photo.visitId)
+            assertEquals(clip.visitId, roomMedia.visits(property).single().id)
             assertTrue("Compass overlay metadata was not set",clip.compassEmbedded)
             val media=MediaMetadataRetriever()
             try {
@@ -118,8 +153,29 @@ class RecorderTest {
                     markerPixels>2
                 }
             } finally { library.close() }
+
+            val gallery = ActivityScenario.launch<RoomPhotosActivity>(
+                Intent(context, RoomPhotosActivity::class.java).putExtra("visitId", clip.visitId))
+            try {
+                fun preview(view: View): View? {
+                    if (view.contentDescription == "View ${photo.title} full screen") return view
+                    if (view is ViewGroup) for (i in 0 until view.childCount) preview(view.getChildAt(i))?.let { return it }
+                    return null
+                }
+                waitUntil("Photo did not appear in its visit gallery") {
+                    var found = false
+                    gallery.onActivity { found = preview(it.window.decorView) != null }
+                    found
+                }
+                gallery.onActivity { preview(it.window.decorView)!!.performClick() }
+                waitUntil("Full-screen photo viewer did not open") {
+                    val root = instrumentation.uiAutomation.rootInActiveWindow
+                    root?.findAccessibilityNodeInfosByText("×")?.any { it.contentDescription == "Close photo" } == true
+                }
+            } finally { gallery.close() }
         } finally {
             scenario.close()
+            roomMedia.all(property).forEach { roomMedia.delete(it) }
             store.all(property).forEach { clip ->
                 store.movie(clip.id).delete()
                 java.io.File(context.filesDir,"walkthroughs/${clip.id}.json").delete()
