@@ -64,6 +64,9 @@ class WalkthroughLibraryActivity:AppCompatActivity() {
                 startActivity(Intent(this, RecorderActivity::class.java).putExtra("propertyId", propertyId))
             })
         }
+        list.addView(ui.menuCard("Share or save media", "Select photos and videos, or save all to Gallery", R.drawable.ic_share) {
+            startActivity(Intent(this, MediaExportActivity::class.java).putExtra("propertyId", propertyId).putExtra("visitId", visitId))
+        })
         val screen = generation
         val loading = ui.text("Loading media…", 14f, false, ui.muted)
         list.addView(loading)
@@ -141,6 +144,10 @@ class WalkthroughLibraryActivity:AppCompatActivity() {
         player=view;root.addView(container,LinearLayout.LayoutParams(-1,0,1f))
         val footer=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(ui.dp(20),ui.dp(16),ui.dp(20),ui.dp(20)) }
         footer.addView(ui.action("Share video",R.drawable.ic_share) { share(id) },LinearLayout.LayoutParams(-1,ui.dp(56)))
+        footer.addView(ui.action("Save video to Gallery", R.drawable.ic_share) {
+            view.pause()
+            startActivity(Intent(this, MediaExportActivity::class.java).putExtra("videoId", id))
+        }, LinearLayout.LayoutParams(-1, ui.dp(52)))
         footer.addView(ui.action("Capture room photo", R.drawable.ic_folder) {
             view.pause()
             saveFrame(id, view.currentPosition.toLong())

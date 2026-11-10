@@ -53,7 +53,7 @@ class RecorderActivity : AppCompatActivity() {
     private lateinit var ui:LensUi
     private lateinit var compass:MagneticCompass
     private var overlay:OverlayEffect?=null
-    private val overlayThread=HandlerThread("propertylens.compass.overlay").apply { start() }
+    private val overlayThread=HandlerThread("mypropertyvisit.compass.overlay").apply { start() }
     private lateinit var preview: PreviewView
     private lateinit var status: TextView
     private lateinit var record: Button

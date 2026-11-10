@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
             progress = 30
             progressTintList = ColorStateList.valueOf(accent)
             progressBackgroundTintList = ColorStateList.valueOf(Color.parseColor("#60908BB5"))
-            contentDescription = "Loading PropertyLens"
+            contentDescription = "Loading MyPropertyVisit"
         }
         addView(launchProgress, FrameLayout.LayoutParams(dp(132), dp(6), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -198,11 +198,14 @@ class MainActivity : AppCompatActivity() {
         selected = null
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_propertylens)
+            setImageResource(R.drawable.ic_mypropertyvisit)
             background = rounded(primary, 8f)
             clipToOutline = true
         }, LinearLayout.LayoutParams(dp(36), dp(36)))
-        header.addView(text("PropertyLens",24f,true,ink).apply { setPadding(dp(10),0,0,0) }, LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(text("MyPropertyVisit",24f,true,ink).apply {
+            setPadding(dp(10),0,0,0); maxLines=1
+            setAutoSizeTextTypeUniformWithConfiguration(16,24,1,android.util.TypedValue.COMPLEX_UNIT_SP)
+        }, LinearLayout.LayoutParams(0,-2,1f))
         header.addView(text("⚙",26f,false,accent).apply {
             gravity=Gravity.CENTER; contentDescription="Settings"; isFocusable=true
             setOnClickListener { go("settings") }
@@ -286,7 +289,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
     private fun settings() {
-        add(LensUi(this).hero("Make it yours", "Manage your local profile and choose how PropertyLens looks."))
+        add(LensUi(this).hero("Make it yours", "Manage your local profile and choose how MyPropertyVisit looks."))
         add(text("Account",19f,true))
         val name = preferences.getString("profile.name", "").orEmpty()
         card("Manage local profile", name.ifBlank { "Add your name and role" }, "♙") { editProfile() }
@@ -349,7 +352,7 @@ class MainActivity : AppCompatActivity() {
         }
         dialog.show()
     }
-    private fun showError(message: String) { AlertDialog.Builder(this).setTitle("PropertyLens").setMessage(message).setPositiveButton("OK",null).show() }
+    private fun showError(message: String) { AlertDialog.Builder(this).setTitle("MyPropertyVisit").setMessage(message).setPositiveButton("OK",null).show() }
     private fun rememberDraft() { if(route=="form" && ::nameInput.isInitialized) { draftName=nameInput.text.toString().trim(); draftLocation=locationInput.text.toString().trim(); draftType=types[typeInput.selectedItemPosition] } }
     override fun onSaveInstanceState(out: Bundle) { rememberDraft(); out.putString("route",route); out.putString("selected",selected); out.putString("name",draftName); out.putString("location",draftLocation); out.putString("type",draftType); super.onSaveInstanceState(out) }
     private fun back() { if(working) return; rememberDraft(); go(when(route) { "details" -> "saved"; "form" -> if(selected==null) "home" else "details"; "record" -> if(selected==null) "home" else "details"; else -> "home" }) }

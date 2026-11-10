@@ -111,6 +111,19 @@ class RecorderTest {
                     frame.recycle()
                 }
             } finally { media.release() }
+            val exported = saveMediaToGallery(context, store.movie(clip.id), true)
+            try {
+                context.contentResolver.openInputStream(exported)!!.use {
+                    assertArrayEquals(store.movie(clip.id).readBytes(), it.readBytes())
+                }
+                val exportedMedia = MediaMetadataRetriever()
+                try {
+                    exportedMedia.setDataSource(context, exported)
+                    val exportedFrame = exportedMedia.getFrameAtTime(0)
+                    assertNotNull("Gallery video has no playable frame", exportedFrame)
+                    exportedFrame?.recycle()
+                } finally { exportedMedia.release() }
+            } finally { context.contentResolver.delete(exported, null, null) }
             // Decode alone did not detect the former opaque VideoView background.
             // Wait for a rendered frame, then inspect the actual on-screen surface.
             scenario.close()

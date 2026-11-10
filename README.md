@@ -1,95 +1,35 @@
-# PropertyLens for Android
+# MyPropertyVisit for Android
 
-Independent native Kotlin Android app. Repository: https://github.com/1Bullzeye1/PropertyLens_android
+Independent native Kotlin Android app. Repository: https://github.com/1Bullzeye1/MyPropertyVisit_android. No iOS source is included here. See [launch documentation](docs/launch/README.md) for Android scope, privacy inventory and release gates.
 
-## Current milestone
+## Current offline features
 
-- Approved indigo/lavender light and slate/ocean-blue dark palettes, following the system appearance.
-- Clickable Home, property preparation, saved properties, details and editing screens.
-- Local SQLite property storage on a background executor, with validation and deletion confirmation.
-- Draft fields and navigation restored after activity recreation.
-- Rear-camera video recording, offline saving and playback are implemented on the recording branch. Call joining remains a placeholder. A compact compass is embedded into new recordings. Saved MP4 videos can be shared through the Android share sheet. Accounts and cloud sync are not implemented yet.
+Property records in SQLite, local profile, purple light/dark/system themes and matching menus; rear-camera silent video, native pause/resume and photo capture; embedded compass in photos/new videos; hardware-aware zoom buttons; capture sessions; full-screen photos and video playback; manual shared room dimensions/notes; individual and batch photo/video sharing and Gallery saving. Home provides room-gallery and media-library access.
+
+Live calling, verified accounts, cloud sync and full project backup/restore remain outside launch. Existing calling placeholders require release cleanup. Gallery exports preserve compass artwork, not all editable room/project metadata. Android price remains an owner decision; iOS USD 4.99 pricing does not grant a cross-platform entitlement.
 
 ## Open and build
 
-Open this directory (PropertyLens-Android) in Android Studio and let Gradle sync finish. Select the app configuration and an emulator/device, then Run. Minimum Android 11 (API 30); compile/target API 36. Uses JDK 17 or newer, Gradle 8.13, AGP 8.13.2, Kotlin 2.2.21 and AndroidX Activity 1.10.1.
+Open this repository root in Android Studio and finish Gradle sync. Use the Android App run configuration with module app and Default Activity; do not create a Java/main-class configuration. Select an emulator or a USB-debugging device.
 
-Local command-line build on this Mac:
+Minimum Android 11/API 30; current compile/target API 36. Gradle 8.13, AGP 8.13.2, Kotlin 2.2.21, CameraX 1.4.2. The known working local Java runtime is JBR 21; the newer Android Studio JBR previously failed with this toolchain.
 
 ```sh
-JAVA_HOME=/Users/bullzeye/Library/Java/JavaVirtualMachines/jbr-21.0.11/Contents/Home ./gradlew assembleDebug lintDebug
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export JAVA_HOME="$HOME/Library/Java/JavaVirtualMachines/jbr-21.0.11/Contents/Home"
+./gradlew --offline :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
 ```
 
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
+Debug APK: app/build/outputs/apk/debug/app-debug.apk. Instrumentation requires a functioning device/emulator camera. Avoid concurrent UI automation sessions while running instrumentation. Keep local.properties, .idea, .gradle, build output, signing files and credentials out of Git.
 
-Keep `local.properties`, .idea, .gradle, build output and credentials outside Git. The existing package/application ID remains `com.ganesham.app` to preserve local installs; the visible name is PropertyLens. Final package naming, app icon polish, full localization and backup policy review remain release-preparation work.
+Application ID com.ganesham.app is intentionally retained for installed-data continuity; visible name is MyPropertyVisit. A signed release AAB and Play review are separate release steps.
 
-## Acceptance checklist
+## Storage and permissions
 
-1. Open Home in light/dark mode and verify readable cards, safe system-bar spacing and navigation.
-2. Try to save empty fields and confirm validation. Save a land/flat/building record.
-3. Open Saved, inspect and edit a property; restart the app and confirm persistence.
-4. Cancel deletion, then confirm deletion; verify the record is removed.
-5. Rotate while entering property details and confirm the draft survives.
-6. Verify system Back returns through the screens. Record/call placeholders must not claim to be working tools.
+Camera permission only in the main manifest. No microphone recording, GPS location collection, contacts integration or first-party network client. Property data is local SQLite; profile/theme uses preferences; videos/JSON live in files/walkthroughs and photo/room/visit records in files/room-media. Backup is disabled in the manifest. User-directed Gallery export uses MediaStore, and sharing uses temporary read grants through FileProvider. Other apps and platform media sync have their own policies.
 
-No iOS files belong in this repository. The foundation is the first main-branch baseline. New camera work is developed separately on a feature branch.
+## Validation baseline
 
-## Verification for this milestone
+The export milestone passed debug builds, Android lint and **11 Pixel 8 emulator instrumentation tests**, including photo-byte preservation, Gallery publication, selection controls, and actual recorded MP4 playback after export. Physical-device verification of the latest export build remains pending. Previous Motorola reports make real-device framing, saved-video playback and compass bounds explicit release tests. Run interruption, low-storage, denied-permission, large-gallery, theme, accessibility and update-retention checks before shipping.
 
-`assembleDebug`, `lintDebug` and `connectedDebugAndroidTest` passed on the Pixel 8 API 36 emulator. The isolated PropertyStore test verifies create, persistence after reopening the database, edit and delete without touching user records. Run it with `./gradlew connectedDebugAndroidTest` while a device/emulator is connected. UI was visually inspected; the full acceptance checklist above still needs user review. Lint reports no errors; informational recommendations remain for newer tool/dependency versions, KTX color helpers and backup policy.
-
-## Settings
-
-The Home gear opens Settings with persistent System/Light/Dark appearance and a device-local name, optional email and Buyer/Seller/Broker role. Local profile clearing preserves properties. Authentication and cloud sync are not implemented.
-
-## Rear-camera recording milestone
-
-Branch: `codex/android-walkthrough-recording` (separate from the foundation on main).
-
-From Home or a saved property choose **Record walkthrough**. Allow camera access, tap Record, then Stop & save. The Saved button opens offline playback. Property-specific entry points filter the saved library to that property; Home shows all recordings. Capture uses CameraX 1.4.2, requests HD with device fallback, and never enables audio or asks for microphone permission. A visible REC state and keep-screen-on flag are active while recording.
-
-Completed MP4 files and atomic JSON sidecars are stored privately under files/walkthroughs. Incomplete recordings are not listed. No cloud upload or external storage permission is involved. Uninstalling the app removes local recordings. Hold the phone upright; landscape/large-screen behaviour is not yet validated. Backgrounding or leaving recording requests stop/finalization; permission denial and save failure show feedback.
-
-### Acceptance checks before merging
-
-- Physical Android device: permission denial, allowing permission in Settings, preview restart, record/stop/save, offline playback after app restart, and screen/background interruptions.
-- Check the saved frame orientation and preview framing, particularly on hardware with a nonstandard camera sensor orientation.
-- Verify low-storage and camera-in-use failure feedback.
-- Saved videos can be shared from the library or playback. New videos contain a compass; older videos cannot recover missing historical readings.
-
-Automated recorder test: `./gradlew connectedDebugAndroidTest`. The test grants camera permission on the test device, records a short clip, verifies duration and a decodable frame, confirms no audio track, and cleans up only its own recordings. It also runs the independent property-database regression test. Requires a connected device/emulator with a functioning rear camera.
-
-### Recorder verification
-
-`assembleDebug`, `lintDebug`, and both connected instrumentation tests passed on the Pixel 8 API 36 emulator. The recorder test produced a real camera clip, checked positive duration and video width, decoded a frame, and confirmed that the file contains no audio track. Physical-device camera behaviour and the interruption checklist remain pending. Lint reports no errors; dependency-update, portrait-orientation, backup-policy and style recommendations remain. This feature branch is not merged to main until device review.
-
-## Motorola playback fix and embedded compass
-
-Playback now puts the black background on the video container rather than VideoView itself. An opaque background on the SurfaceView can hide decoded video. A progress indicator stays visible until the first video frame is rendered. Camera use cases and overlay resources are released when leaving the recorder so they do not compete with playback.
-
-CameraX OverlayEffect embeds a compact dial into both the preview and the saved MP4. N/E/S/W and degrees are included at the top-left. The red needle points to magnetic north; the gold marker represents the rear camera's forward direction. This is a magnetic camera bearing while the phone is held upright. It is not the same as the phone's top edge when pointing vertically upward. Without a usable magnetometer/orientation sensor, with unreliable or stale readings, or with the camera pointing nearly straight up/down, the dial shows a slash and dash instead of inventing a bearing. No location permission is requested.
-
-Older JSON sidecars remain compatible and default compassEmbedded to false. Old MP4 files remain unchanged, so they do not gain missing compass data. New sidecars mark the embedded overlay.
-
-Regression tests cover north/east/south/west bearing maths, unavailable rendering, the compass marker inside a decoded recorded frame, and actual visible playback on the screen (the previous test only checked decoding). Physical Motorola compass accuracy and field-of-view review remain required.
-
-### Verification of playback and compass update
-
-Build and lint passed. Four instrumentation tests passed on the Pixel 8 emulator, including actual non-black on-screen playback and a compass marker found in an encoded video frame. These tests were run explicitly on emulator-5554, not on the user's phone, to preserve its saved videos. A camera-to-playback resource handoff freeze found during testing was addressed by releasing capture/overlay resources when leaving the recorder. The Motorola edge 60 pro needs user confirmation of old-video playback and a newly recorded compass video after updating; old recordings have no historical compass data.
-
-### Compass bounds correction
-
-Preview and recording now share an explicit portrait 9:16 ViewPort. This prevents a wider camera source buffer from being independently cropped by the encoder after the compass has been drawn. Placement uses that shared crop and handles 0/90/180/270-degree rotation before adding a safe inset for the whole dial and readout.
-
-Build and lint passed. On the connected Motorola edge 60 pro, the property/compass tests passed, including pixel-based crop/rotation bounds. The capture test then passed with the embedded marker in its expected normalized position and visible during on-screen playback. The playback test now checks the known compass marker instead of assuming the centre of the camera scene is bright. It also waits for the frame to reach the compositor. Only uniquely identified diagnostic recordings were removed by the test; existing user recordings were retained. Previously clipped MP4 overlays are already baked in and are not rewritten by this fix; record a new video to verify corrected placement.
-
-## Refreshed recorder, library and sharing
-
-The recorder now has a compact icon header and circular record/stop control. The saved library uses thumbnail cards with dates, durations and a compass/video-only badge. Library and playback screens follow the selected light/dark theme; the camera remains dark for viewing contrast. Playback keeps the video surface transparent over its black container to preserve the black-screen fix.
-
-Tap a card to play, its share icon to share directly, or **Share video** beneath playback. Android's system share sheet lets the user select the destination. The exact saved MP4 is shared, so baked-in compass overlays remain included without re-encoding. Old videos share their original content. No recipient is selected and no upload occurs automatically.
-
-FileProvider is non-exported and scoped to the walkthrough directory. Sharing grants temporary read access to one content URI, with video/mp4 MIME type and ClipData for receiver compatibility. Account settings and unrelated private files are outside the provider path. No storage permission is added.
-
-Build and lint passed. All seven tests passed on Motorola edge 60 pro, covering recorder/playback, compass placement and math, property persistence, selected-MP4 sharing permissions/MIME/readability, and rejection of unrelated private files. No real video was sent during testing. The refreshed screens still need the user's visual acceptance.
+The release checklist records these as open actions rather than implying emulator success is production acceptance.

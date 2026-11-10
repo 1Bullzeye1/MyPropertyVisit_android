@@ -42,6 +42,7 @@ class RoomPhotosActivity : AppCompatActivity() {
         header.addView(ui.iconButton(R.drawable.ic_back, "Back") { finish() }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
         header.addView(ui.text("Room photos", 23f, true))
         root.addView(header)
+        root.addView(ui.action("Share / Save photos", R.drawable.ic_share) { exportPhotos() })
         list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.dp(20), ui.dp(10), ui.dp(20), ui.dp(24))
@@ -111,7 +112,7 @@ class RoomPhotosActivity : AppCompatActivity() {
             isAllCaps = false
             setOnClickListener {
                 AlertDialog.Builder(this@RoomPhotosActivity).setTitle("Delete photo?")
-                    .setMessage("Delete this photo from PropertyLens? Other photos in the room will stay saved.")
+                    .setMessage("Delete this photo from MyPropertyVisit? Other photos in the room will stay saved.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Delete") { _, _ ->
                         io.execute {
                             val result = runCatching { store.delete(photo) }
@@ -120,6 +121,7 @@ class RoomPhotosActivity : AppCompatActivity() {
                     }.show()
             }
         }, LinearLayout.LayoutParams(0, ui.dp(48), 1f))
+        card.addView(ui.action("Share / Save photo", R.drawable.ic_share) { exportPhotos(photo.id) })
         card.addView(controls)
         list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) })
         io.execute {
@@ -283,6 +285,14 @@ class RoomPhotosActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+    }
+
+    private fun exportPhotos(id: String? = null) {
+        startActivity(android.content.Intent(this, MediaExportActivity::class.java)
+            .putExtra("photosOnly", true).putExtra("photoId", id)
+            .putExtra("propertyId", intent.getStringExtra("propertyId"))
+            .putExtra("visitId", intent.getStringExtra("visitId"))
+            .putExtra("clipId", intent.getStringExtra("clipId")))
     }
 
     private fun message(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()

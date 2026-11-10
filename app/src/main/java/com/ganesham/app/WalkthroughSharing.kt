@@ -13,8 +13,8 @@ internal object WalkthroughSharing {
         return Intent(Intent.ACTION_SEND).apply {
             type="video/mp4"
             putExtra(Intent.EXTRA_STREAM,uri)
-            putExtra(Intent.EXTRA_TITLE,"PropertyLens walkthrough")
-            clipData=ClipData.newUri(context.contentResolver,"PropertyLens walkthrough",uri)
+            putExtra(Intent.EXTRA_TITLE,"MyPropertyVisit walkthrough")
+            clipData=ClipData.newUri(context.contentResolver,"MyPropertyVisit walkthrough",uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
